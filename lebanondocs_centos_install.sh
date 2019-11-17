@@ -99,7 +99,7 @@ if isinstalled mariadb-server; then
 else
     echo "Installing MariaDB";
     yum -y install mariadb-server
-    echo "MariaDB root password ${ROOTPASS}" | gpg --encrypt -o mariadb-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    echo "MariaDB root password ${ROOTPASS}" | gpg --trust-model always --encrypt -o mariadb-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
     systemctl start mariadb
     systemctl enable mariadb
 
@@ -135,7 +135,9 @@ if isinstalled rh-php72; then echo "php is already installed"; else
     systemctl enable rh-php72-php-fpm.service 
     systemctl start rh-php72-php-fpm.service
     systemctl status rh-php72-php-fpm.service
-    scl enable rh-php72 bash
+    #scl enable rh-php72 - << \EOF
+    source scl_source enable rh-php72
+    echo "source scl_source enable rh-php72" ~/.bash_profile
 fi
 
 echo "Installing PHP extensions"
@@ -143,6 +145,8 @@ if isinstalled rh-php72-php-mysqlnd; then echo "php-mysqlnd is already installed
     yum -y install rh-php72-php-mysqlnd rh-php72-php-mbstring
     systemctl restart rh-php72-php-fpm.service
 fi
+
+echo "Installing FPM config"
 
 echo "# PHP scripts setup 
 ProxyPassMatch ^/(.*.php)$ fcgi://127.0.0.1:9000/var/www/html
@@ -153,10 +157,8 @@ DirectoryIndex index.php
 " > /etc/httpd/conf.d/fpm.conf
 systemctl restart httpd
 
-
-
 echo Cloudflare setup
-yum -f install httpd-devel gcc
+yum -y install httpd-devel gcc mod_ssl
 curl https://raw.githubusercontent.com/cloudflare/mod_cloudflare/master/mod_cloudflare.c --output mod_cloudflare.c
 apxs -a -i -c mod_cloudflare.c 
 systemctl restart httpd
@@ -189,7 +191,7 @@ if [ "$answerm" = "fresh" ]; then
 
     WIKIDBPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
     WIKIADMINPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
-    echo "Mediawiki admin password ${WIKIADMINPASS}" | gpg --encrypt -o wiki-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    echo "Mediawiki admin password ${WIKIADMINPASS}" | gpg --trust-model always --encrypt -o wiki-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
     mkdir /var/www/html/wiki
     tar -xvf ${WIKI_FILENAME} --strip 1 -C /var/www/html/wiki
     php /var/www/html/wiki/maintenance/install.php --installdbuser=root --installdbpass=${ROOTPASS} --dbuser=lbdocs --dbpass=${WIKIDBPASS} --confpath=/var/www/html/wiki --dbname=lbwiki --pass=${WIKIADMINPASS} "LBDocs" "Adminlb"
