@@ -1,8 +1,64 @@
 #!/bin/bash
-# !!! WARNING! Please replace this lines by your devops pgp public key and email !!!
-TRUSTED_ADMIN_KEY="denys_pubkey.asc"
+# !!! WARNING! Please replace following data by your devops pgp public key and email !!!
 TRUSTED_ADMIN_EMAIL="nuclearcat@nuclearcat.com"
 MEDIAWIKI_URI="https://releases.wikimedia.org/mediawiki/1.31/mediawiki-1.31.5.tar.gz"
+gpg --import <<EOF
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+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
+neTtOo69uMsr9m4QNMtar6AFL2IV4b38
+=tGg9
+-----END PGP PUBLIC KEY BLOCK-----
+EOF
+
+# END OF USER DEFINED/CHANGEABLE DATA
+
 
 # Quick note (mostly for myself) how to delete MariaDB db and start from 0 for testing
 # yum remove mariadb-server; rm -rf mediawiki-1.31.5.tar.gz ; rm -f mariadb-info.gpg ; rm -rf /var/lib/mysql/;rm -rf /var/www/html/wiki
@@ -21,7 +77,7 @@ else
     yum -y install centos-release-scl.noarch
 fi
 
-gpg --import ${TRUSTED_ADMIN_KEY}
+#gpg --import ${TRUSTED_ADMIN_KEY}
 if [ -f "mariadb-info.gpg" ]; then
     echo "You have old gpg file, at least MariaDB mariadb-info.gpg, to avoid overwriting - exiting. Please backup old files first"
     exit
