@@ -61,7 +61,7 @@ EOF
 
 
 # Quick note (mostly for myself) how to delete MariaDB db and start from 0 for testing
-# yum remove mariadb-server; rm -rf mediawiki-1.31.5.tar.gz ; rm -f mariadb-info.gpg ; rm -rf /var/lib/mysql/;rm -rf /var/www/html/wiki
+# yum remove -y mariadb-server; rm -rf mediawiki-1.31.5.tar.gz ; rm -f mariadb-info.gpg ; rm -rf /var/lib/mysql/;rm -rf /var/www/html/wiki; yum -y remove git; rm -rf BACKUP
 
 function isinstalled {
   if yum list installed "$@" >/dev/null 2>&1; then
@@ -70,6 +70,15 @@ function isinstalled {
     false
   fi
 }
+
+if [ "$BASH_VERSION" = '' ]; then
+    echo "You need to run this script under bash, e.g. bash $0"
+
+fi
+
+exec > >(tee -i install_log.txt)
+exec 2>&1
+
 
 if isinstalled centos-release-scl.noarch; then 
     echo Software collection already installed
@@ -136,9 +145,10 @@ if isinstalled rh-php72; then echo "php is already installed"; else
     systemctl start rh-php72-php-fpm.service
     systemctl status rh-php72-php-fpm.service
     #scl enable rh-php72 - << \EOF
-    source scl_source enable rh-php72
-    echo "source scl_source enable rh-php72" ~/.bash_profile
+    echo "source scl_source enable rh-php72" >>~/.bash_profile
 fi
+# Just in case, better here
+source scl_source enable rh-php72
 
 echo "Installing PHP extensions"
 if isinstalled rh-php72-php-mysqlnd; then echo "php-mysqlnd is already installed"; else 
@@ -176,6 +186,10 @@ fi
 # TODO: Make proper redirect
 echo '<?php header("Location: /wiki/"); ?>' >/var/www/html/index.php
 
+if [ -f "backup.tgz" ]; then
+    echo "WARNING! Backup found, typing backup strongly recommended!"
+fi
+
 read -p "Do you want to install fresh mediawiki or backup? (fresh / backup) >" answerm
 if [ "$answerm" = "fresh" ]; then
     echo "Installing mediawiki"
@@ -195,5 +209,30 @@ if [ "$answerm" = "fresh" ]; then
     mkdir /var/www/html/wiki
     tar -xvf ${WIKI_FILENAME} --strip 1 -C /var/www/html/wiki
     php /var/www/html/wiki/maintenance/install.php --installdbuser=root --installdbpass=${ROOTPASS} --dbuser=lbdocs --dbpass=${WIKIDBPASS} --confpath=/var/www/html/wiki --dbname=lbwiki --pass=${WIKIADMINPASS} "LBDocs" "Adminlb"
+    echo "Installing and initializing git for backups..."
+    if [ ! -d BACKUP ]; then
+        yum -y install git
+        mkdir BACKUP
+        cd BACKUP
+        git init .
+        git config --global user.name "LBDocs git user at `hostname`"
+        git config --global user.email ${TRUSTED_ADMIN_EMAIL}
+        rsync -av /var/www/html .
+        cp ../mariadb-info.gpg .
+        cp ../wiki-info.gpg .
+        mysqldump -p${ROOTPASS} --all-databases >db-dump.sql
+        git add *
+        git commit -a -m "Initial commit"
+        cd ..
+        tar -cz BACKUP | gpg --trust-model always --encrypt -o backup.tgz.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    fi
 fi
 
+if [ "$answerm" = "backup" ]; then
+    echo Restoring backup
+    tar zxf backup.tgz
+    cd BACKUP
+    rsync -av html/ /var/www/html/
+    mysql -p${ROOTPASS} <db-dump.sql
+    echo "FLUSH PRIVILEGES;"| mysql -p${ROOTPASS}
+fi
