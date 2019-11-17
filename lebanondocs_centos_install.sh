@@ -3,9 +3,10 @@
 TRUSTED_ADMIN_KEY="denys_pubkey.asc"
 TRUSTED_ADMIN_EMAIL="nuclearcat@nuclearcat.com"
 
-# Quick note (mostly for myself) how to delete MariaDB db and start from 0
-# yum remove mariadb-server
-# rm -rf /var/lib/mysql
+MEDIAWIKI_URI="https://releases.wikimedia.org/mediawiki/1.31/mediawiki-1.31.5.tar.gz"
+
+# Quick note (mostly for myself) how to delete MariaDB db and start from 0 for testing
+# yum remove mariadb-server; rm -rf mediawiki-1.31.5.tar.gz ; rm -f mariadb-info.gpg ; rm -rf /var/lib/mysql/
 
 function isinstalled {
   if yum list installed "$@" >/dev/null 2>&1; then
@@ -14,6 +15,12 @@ function isinstalled {
     false
   fi
 }
+
+if isinstalled centos-release-scl.noarch; then 
+    echo Software collection already installed
+else
+    yum -y install centos-release-scl.noarch
+fi
 
 gpg --import ${TRUSTED_ADMIN_KEY}
 if [ -f "mariadb-info.gpg" ]; then
@@ -31,7 +38,7 @@ else
 fi
 
 
-export ROOTPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
+ROOTPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
 if isinstalled mariadb-server; then 
     echo "MariaDB is already installed, halting as we dont know root password";
 else
@@ -68,12 +75,44 @@ if isinstalled httpd; then echo "apache(httpd) is already installed"; else
 fi
 
 echo "Installing PHP"
-if isinstalled php; then echo "php is already installed"; else 
-    yum -y install php
+if isinstalled rh-php72; then echo "php is already installed"; else 
+    yum -y install rh-php72 rh-php72-php rh-php71-php-cli rh-php72-php-fpm
+    systemctl enable rh-php72-php-fpm.service 
+    systemctl start rh-php72-php-fpm.service
+    systemctl status rh-php72-php-fpm.service
+    scl enable rh-php72 bash
 fi
 
-echo "Installing PHP-MySQLND"
-if isinstalled php-mysqlnd; then echo "php-mysqlnd is already installed"; else 
-    yum -y install php-mysqlnd
+echo "Installing PHP extensions"
+if isinstalled rh-php72-php-mysqlnd; then echo "php-mysqlnd is already installed"; else 
+    yum -y install rh-php72-php-mysqlnd rh-php72-php-mbstring
+    systemctl restart rh-php72-php-fpm.service
 fi
 
+echo "# PHP scripts setup 
+ProxyPassMatch ^/(.*.php)$ fcgi://127.0.0.1:9000/var/www/html
+
+Alias / /var/www/html/
+
+DirectoryIndex index.php
+" > /etc/httpd/conf.d/fpm.conf
+systemctl restart httpd
+
+echo "Installing mediawiki"
+WIKI_FILENAME="${MEDIAWIKI_URI##*/}"
+echo ${WIKI_FILENAME}
+if [ -f "${WIKI_FILENAME}" ]; then
+    echo "Mediawiki file already present"
+else
+    echo "Downloading mediawiki..."
+    # TODO: Check return code
+    curl ${MEDIAWIKI_URI} --output ${WIKI_FILENAME}
+fi
+
+WIKIDBPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
+WIKIADMINPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
+echo "Mediawiki admin password ${WIKIADMINPASS}" | gpg --encrypt -o wiki-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
+
+mkdir /var/www/html/wiki
+tar -xvf ${WIKI_FILENAME} --strip 1 -C /var/www/html/wiki
+php /var/www/html/wiki/maintenance/install.php --installdbuser=root --installdbpass=${ROOTPASS} --dbuser=lbdocs --dbpass=${WIKIDBPASS} --confpath=/var/www/html/wiki --dbname=lbwiki --pass=${WIKIADMINPASS} "LBDocs" "Adminlb"
