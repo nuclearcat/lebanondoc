@@ -2,11 +2,10 @@
 # !!! WARNING! Please replace this lines by your devops pgp public key and email !!!
 TRUSTED_ADMIN_KEY="denys_pubkey.asc"
 TRUSTED_ADMIN_EMAIL="nuclearcat@nuclearcat.com"
-
 MEDIAWIKI_URI="https://releases.wikimedia.org/mediawiki/1.31/mediawiki-1.31.5.tar.gz"
 
 # Quick note (mostly for myself) how to delete MariaDB db and start from 0 for testing
-# yum remove mariadb-server; rm -rf mediawiki-1.31.5.tar.gz ; rm -f mariadb-info.gpg ; rm -rf /var/lib/mysql/
+# yum remove mariadb-server; rm -rf mediawiki-1.31.5.tar.gz ; rm -f mariadb-info.gpg ; rm -rf /var/lib/mysql/;rm -rf /var/www/html/wiki
 
 function isinstalled {
   if yum list installed "$@" >/dev/null 2>&1; then
@@ -98,21 +97,45 @@ DirectoryIndex index.php
 " > /etc/httpd/conf.d/fpm.conf
 systemctl restart httpd
 
-echo "Installing mediawiki"
-WIKI_FILENAME="${MEDIAWIKI_URI##*/}"
-echo ${WIKI_FILENAME}
-if [ -f "${WIKI_FILENAME}" ]; then
-    echo "Mediawiki file already present"
-else
-    echo "Downloading mediawiki..."
-    # TODO: Check return code
-    curl ${MEDIAWIKI_URI} --output ${WIKI_FILENAME}
+
+
+echo Cloudflare setup
+yum -f install httpd-devel gcc
+curl https://raw.githubusercontent.com/cloudflare/mod_cloudflare/master/mod_cloudflare.c --output mod_cloudflare.c
+apxs -a -i -c mod_cloudflare.c 
+systemctl restart httpd
+if [ ! -f /etc/pki/tls/certs/cloudflare.crt ]; then
+    echo "Go to Cloudflare panel, SSL/TLS, Origin Server, Create Certificate, then generate with defaults"
+    echo "Now paste here Origin Certificate and then press Ctrl+D at the end"
+    cat > /etc/pki/tls/certs/cloudflare.crt
+    echo "Now paste here Origin Private key and then press Ctrl+D at the end"
+    cat > /etc/pki/tls/private/cloudflare.key
+    sed -i 's/localhost.crt/cloudflare.crt/g' /etc/httpd/conf.d/ssl.conf
+    sed -i 's/localhost.key/cloudflare.key/g' /etc/httpd/conf.d/ssl.conf
+    systemctl restart httpd
 fi
 
-WIKIDBPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
-WIKIADMINPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
-echo "Mediawiki admin password ${WIKIADMINPASS}" | gpg --encrypt -o wiki-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
+# TODO: Make proper redirect
+echo '<?php header("Location: /wiki/"); ?>' >/var/www/html/index.php
 
-mkdir /var/www/html/wiki
-tar -xvf ${WIKI_FILENAME} --strip 1 -C /var/www/html/wiki
-php /var/www/html/wiki/maintenance/install.php --installdbuser=root --installdbpass=${ROOTPASS} --dbuser=lbdocs --dbpass=${WIKIDBPASS} --confpath=/var/www/html/wiki --dbname=lbwiki --pass=${WIKIADMINPASS} "LBDocs" "Adminlb"
+read -p "Do you want to install fresh mediawiki or backup? (fresh / backup) >" answerm
+if [ "$answerm" = "fresh" ]; then
+    echo "Installing mediawiki"
+    WIKI_FILENAME="${MEDIAWIKI_URI##*/}"
+    echo ${WIKI_FILENAME}
+    if [ -f "${WIKI_FILENAME}" ]; then
+	echo "Mediawiki file already present"
+    else
+	echo "Downloading mediawiki..."
+	# TODO: Check return code
+	curl ${MEDIAWIKI_URI} --output ${WIKI_FILENAME}
+    fi
+
+    WIKIDBPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
+    WIKIADMINPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
+    echo "Mediawiki admin password ${WIKIADMINPASS}" | gpg --encrypt -o wiki-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    mkdir /var/www/html/wiki
+    tar -xvf ${WIKI_FILENAME} --strip 1 -C /var/www/html/wiki
+    php /var/www/html/wiki/maintenance/install.php --installdbuser=root --installdbpass=${ROOTPASS} --dbuser=lbdocs --dbpass=${WIKIDBPASS} --confpath=/var/www/html/wiki --dbname=lbwiki --pass=${WIKIADMINPASS} "LBDocs" "Adminlb"
+fi
+
