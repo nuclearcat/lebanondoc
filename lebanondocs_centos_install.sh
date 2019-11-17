@@ -73,7 +73,6 @@ function isinstalled {
 
 if [ "$BASH_VERSION" = '' ]; then
     echo "You need to run this script under bash, e.g. bash $0"
-
 fi
 
 exec > >(tee -i install_log.txt)
@@ -103,12 +102,14 @@ fi
 
 
 ROOTPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
+BACKUPPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
 if isinstalled mariadb-server; then 
     echo "MariaDB is already installed, halting as we dont know root password";
 else
     echo "Installing MariaDB";
     yum -y install mariadb-server
-    echo "MariaDB root password ${ROOTPASS}" | gpg --trust-model always --encrypt -o mariadb-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    echo "MariaDB root password ${ROOTPASS}" | gpg --trust-model always --encrypt -o mariadb-rootinfo.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    echo "Backup password ${BACKUPPASS}" | gpg --trust-model always --encrypt -o mariadb-backupinfo.gpg -r ${TRUSTED_ADMIN_EMAIL}
     systemctl start mariadb
     systemctl enable mariadb
 
@@ -124,6 +125,8 @@ else
     echo "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');" | mysql -p${ROOTPASS}
     echo "DROP DATABASE test;" | mysql -p${ROOTPASS}
     echo "DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';" | mysql -p${ROOTPASS}
+    echo "CREATE USER 'backup'@'localhost' IDENTIFIED BY '${BACKUPPASS}'"| mysql -p${ROOTPASS}
+    echo "GRANT SELECT, SHOW VIEW, RELOAD, REPLICATION CLIENT, EVENT, TRIGGER, LOCK ON *.* TO 'backup'@'localhost'"| mysql -p${ROOTPASS}
     echo "FLUSH PRIVILEGES;"| mysql -p${ROOTPASS}
 fi
 
@@ -218,9 +221,11 @@ if [ "$answerm" = "fresh" ]; then
         git config --global user.name "LBDocs git user at `hostname`"
         git config --global user.email ${TRUSTED_ADMIN_EMAIL}
         rsync -av /var/www/html .
-        cp ../mariadb-info.gpg .
+        cp ../mariadb-rootinfo.gpg .
+        cp ../mariadb-backupinfo.gpg .
         cp ../wiki-info.gpg .
         mysqldump -p${ROOTPASS} --all-databases >db-dump.sql
+	# TODO backup tls keys
         git add *
         git commit -a -m "Initial commit"
         cd ..
