@@ -12,7 +12,14 @@ if [ ! -f /etc/httpd/conf/httpd.conf.bak ]; then
 fi
 sed -r '\%<Directory "/var/www/html">%,\%</Directory>% s%(AllowOverride)\s+None%\1 All%i' /etc/httpd/conf/httpd.conf >/etc/httpd/conf/httpd.conf.new
 mv /etc/httpd/conf/httpd.conf.new /etc/httpd/conf/httpd.conf
-semanage permissive -a httpd_t
+
+if grep -q wgFileExtensions /var/www/html/wiki/LocalSettings.php; then
+    echo extensions already fixed
+else
+    semanage permissive -a httpd_t
+    echo Adding pdf
+    echo "\$wgFileExtensions[] = 'pdf';" >>/var/www/html/wiki/LocalSettings.php
+fi
 
 systemctl restart httpd
 systemctl restart rh-php72-php-fpm.service
