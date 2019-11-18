@@ -108,8 +108,10 @@ if isinstalled mariadb-server; then
 else
     echo "Installing MariaDB";
     yum -y install mariadb-server
-    echo "MariaDB root password ${ROOTPASS}" | gpg --trust-model always --encrypt -o mariadb-rootinfo.gpg -r ${TRUSTED_ADMIN_EMAIL}
-    echo "MariaDB backup password ${BACKUPPASS}" | gpg --trust-model always --encrypt -o mariadb-backupinfo.gpg -r ${TRUSTED_ADMIN_EMAIL}
+#    echo "MariaDB root password ${ROOTPASS}" | gpg --trust-model always --encrypt -o mariadb-rootinfo.gpg -r ${TRUSTED_ADMIN_EMAIL}
+#    echo "MariaDB backup password ${BACKUPPASS}" | gpg --trust-model always --encrypt -o mariadb-backupinfo.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    echo "MariaDB root password ${ROOTPASS}" >> install-info.txt
+    echo "MariaDB backup password ${BACKUPPASS}" >> install-info.txt
     systemctl start mariadb
     systemctl enable mariadb
 
@@ -208,7 +210,7 @@ if [ "$answerm" = "fresh" ]; then
 
     WIKIDBPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
     WIKIADMINPASS=`tr -cd '[:alnum:]' < /dev/urandom | fold -w30 | head -n1`
-    echo "Mediawiki Adminlb password ${WIKIADMINPASS}" | gpg --trust-model always --encrypt -o wiki-info.gpg -r ${TRUSTED_ADMIN_EMAIL}
+    echo "Mediawiki Adminlb password ${WIKIADMINPASS}" >> install-info.txt
     mkdir /var/www/html/wiki
     tar -xvf ${WIKI_FILENAME} --strip 1 -C /var/www/html/wiki
     php /var/www/html/wiki/maintenance/install.php --installdbuser=root --installdbpass=${ROOTPASS} --dbuser=lbdocs --dbpass=${WIKIDBPASS} --confpath=/var/www/html/wiki --dbname=lbwiki --pass=${WIKIADMINPASS} "LBDocs" "Adminlb"
@@ -229,7 +231,8 @@ if [ "$answerm" = "fresh" ]; then
         git add *
         git commit -a -m "Initial commit"
         cd ..
-        tar -cz BACKUP | gpg --trust-model always --encrypt -o backup.tgz.gpg -r ${TRUSTED_ADMIN_EMAIL}
+        #tar -cz BACKUP | gpg --trust-model always --encrypt -o backup.tgz.gpg -r ${TRUSTED_ADMIN_EMAIL}
+	tar -cz BACKUP > backup.tgz
     fi
 fi
 
